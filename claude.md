@@ -30,12 +30,13 @@ Requires only the Python standard library. The script parses Colab-style standal
 
 All logic lives in `bhuvanfitterpierce.py`, structured as 15 notebook sections:
 
-**Core library (§1–6):** Pure Python/NumPy — no Colab dependency.
+**Core library (§1–7):** Pure Python/NumPy — no Colab dependency.
 - `_fourparam_gaussian` — module-level (required by `curve_fit`)
 - `_truncated_gaussian_nll`, `_fit_mle_truncated` — MLE internals
 - `BhuvanFitter` class — main API; takes `(data, gene_name, bins, x_max)`
 - `has_minus_one_peak` — sentinel detection
 - `compute_mle_table`, `compute_fourparam_table` — batch runners
+- `plot_truncation_index_distribution` — histogram + ranked bar chart of `ti_mle_sigma_dist` across all genes
 
 **Fitting models:**
 - `"fourparam"` — 4-param Gaussian on histogram counts (NLS/TRF, `soft_l1` loss). Fast; biased because fit anchors to truncated data.
@@ -48,7 +49,7 @@ All logic lives in `bhuvanfitterpierce.py`, structured as 15 notebook sections:
 | σ-distance | `ti_fourparam_sigma_dist` | `ti_mle_sigma_dist` |
 | Height ratio | `ti_fourparam_height_ratio` | `ti_mle_height_ratio` |
 
-**Colab runtime sections (§7–15):** Contain Drive mounts, CSV/parquet loads, single-gene examples, batch runs, gene-set lists, and isoform analysis. These sections import `google.colab` — they cannot run outside Colab.
+**Colab runtime sections (§8–15):** Contain Drive mounts, CSV/parquet loads, single-gene examples, batch runs, gene-set lists, and isoform analysis (`analyze_best_isoforms`). These sections import `google.colab` — they cannot run outside Colab.
 
 ## Key Constraints
 
