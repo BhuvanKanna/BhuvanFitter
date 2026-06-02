@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **BhuvanFitter** — distribution fitting + Truncation Index (TI) toolkit for CRISPR/transposon overexpression screen data. The code runs in Google Colab; the source of truth is `bhuvanfitterpierce.py`, treated as a regular Python file.
 
+## Custom Commands
+
+- `/makenotebook` — converts `bhuvanfitterpierce.py` into `bhuvanfitterpierce.ipynb` using Claude's built-in notebook tools (no external script). Parses top-level triple-quoted strings as Markdown cells and all other code as code cells.
+
 ## Git Hygiene
 
 Commit and push to GitHub regularly during any work session — after each meaningful change, not just at the end. This ensures work is never lost and the history is readable.
