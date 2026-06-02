@@ -4,19 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**BhuvanFitter** — distribution fitting + Truncation Index (TI) toolkit for CRISPR/transposon overexpression screen data. Runs in Google Colab as a `.ipynb` notebook.
-
-The primary source of truth is `bhuvanfitterpierce.py`. The `.ipynb` version is generated from it (via `convert_to_nb.py`) only when pushing to GitHub.
-
-## Workflow
-
-Edit the project as `bhuvanfitterpierce.py`. To save a versioned snapshot to GitHub, run:
-
-```
-/checkpoint
-```
-
-This converts the `.py` to `.ipynb`, commits both with a descriptive message, and pushes to `origin/main`.
+**BhuvanFitter** — distribution fitting + Truncation Index (TI) toolkit for CRISPR/transposon overexpression screen data. The code runs in Google Colab; the source of truth is `bhuvanfitterpierce.py`, treated as a regular Python file.
 
 ## Git Hygiene
 
@@ -25,19 +13,10 @@ Commit and push to GitHub regularly during any work session — after each meani
 - Commit after completing each logical unit of work (a new function, a bug fix, a refactor).
 - Write specific commit messages that describe what changed and why (e.g. "Fix baseline subtraction in ti_fourparam_height_ratio", not "Update code").
 - Never leave a session with uncommitted changes to `bhuvanfitterpierce.py`.
-- When running `/checkpoint`, both the `.py` and `.ipynb` are committed together — do not commit them separately.
-
-## Generating the Notebook
-
-```bash
-python convert_to_nb.py bhuvanfitterpierce.py bhuvanfitterpierce.ipynb
-```
-
-Requires only the Python standard library. The script parses Colab-style standalone triple-quoted strings as Markdown cells and all other top-level code as code cells.
 
 ## Architecture
 
-All logic lives in `bhuvanfitterpierce.py`, structured as 15 notebook sections:
+All logic lives in `bhuvanfitterpierce.py`, structured as 15 sections:
 
 **Core library (§1–7):** Pure Python/NumPy — no Colab dependency.
 - `_fourparam_gaussian` — module-level (required by `curve_fit`)
