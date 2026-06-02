@@ -934,15 +934,15 @@ and can be merged on that if you want a unified comparison table.
 
 """
 
-# print("Computing MLE truncation index table for all genes...")
-# mle_table = compute_mle_table(df)
-# print(f"Done. Shape: {mle_table.shape}")
-# display(mle_table)
+print("Computing MLE truncation index table for all genes...")
+mle_table = compute_mle_table(df)
+print(f"Done. Shape: {mle_table.shape}")
+display(mle_table)
 
-# print("Computing fourparam metrics table for all genes...")
-# fourparam_table = compute_fourparam_table(df)
-# print(f"Done. Shape: {fourparam_table.shape}")
-# display(fourparam_table)
+print("Computing fourparam metrics table for all genes...")
+fourparam_table = compute_fourparam_table(df)
+print(f"Done. Shape: {fourparam_table.shape}")
+display(fourparam_table)
 
 """## 11. Optional: Merge MLE and Fourparam Tables
 
@@ -951,20 +951,20 @@ merge on `gene`. The four TI columns will sit next to each other for easy compar
 
 """
 
-# # Optional — merge the two tables on gene for side-by-side comparison
-# combined_ti = mle_table.merge(
-#     fourparam_table[['gene', 'ti_fourparam_sigma_dist', 'ti_fourparam_height_ratio']],
-#     on='gene',
-#     how='left'
-# )
-# display(combined_ti[['gene', 'ti_mle_sigma_dist', 'ti_fourparam_sigma_dist',
-#                       'ti_mle_height_ratio', 'ti_fourparam_height_ratio']])
+# Optional — merge the two tables on gene for side-by-side comparison
+combined_ti = mle_table.merge(
+    fourparam_table[['gene', 'ti_fourparam_sigma_dist', 'ti_fourparam_height_ratio']],
+    on='gene',
+    how='left'
+)
+display(combined_ti[['gene', 'ti_mle_sigma_dist', 'ti_fourparam_sigma_dist',
+                      'ti_mle_height_ratio', 'ti_fourparam_height_ratio']])
 
 """## 12. Visualise the Truncation Index Distribution
 
 """
 
-# plot_truncation_index_distribution(mle_table, top_n=20)
+plot_truncation_index_distribution(mle_table, top_n=20)
 
 """## 13. Combining Expression Data with Fourparam Fit Metrics
 
@@ -973,11 +973,11 @@ DataFrame for export or downstream analysis.
 
 """
 
-# fourparam_metrics_transposed_df = fourparam_table.set_index('gene').T
-# combined_df = pd.concat([df, fourparam_metrics_transposed_df], axis=0)
+fourparam_metrics_transposed_df = fourparam_table.set_index('gene').T
+combined_df = pd.concat([df, fourparam_metrics_transposed_df], axis=0)
 
-# print("Shape of the combined DataFrame:", combined_df.shape)
-# display(combined_df)
+print("Shape of the combined DataFrame:", combined_df.shape)
+display(combined_df)
 
 """## 14. Gene Sets of Interest
 
@@ -1064,28 +1064,28 @@ print(f"mco_behavior → {len(converted_mco_behavior)}/{len(mco_behavior)} genes
 print(f"lof_dev      → {len(converted_lof_dev)}/{len(lof_dev)} genes mapped")
 print(f"lof_behavior → {len(converted_lof_behavior)}/{len(lof_behavior)} genes mapped")
 
-# import json
+import json
 
-# # # Export fourparam_table as a parquet file
-# # fourparam_table.to_parquet('/content/drive/MyDrive/fourparam_table.parquet')
-# # print('fourparam_table exported to fourparam_table.parquet')
+# # Export fourparam_table as a parquet file
+# fourparam_table.to_parquet('/content/drive/MyDrive/fourparam_table.parquet')
+# print('fourparam_table exported to fourparam_table.parquet')
 
-# # # Export mle_table as a parquet file
-# # mle_table.to_parquet('/content/drive/MyDrive/mle_table.parquet')
-# # print('mle_table exported to mle_table.parquet')
+# # Export mle_table as a parquet file
+# mle_table.to_parquet('/content/drive/MyDrive/mle_table.parquet')
+# print('mle_table exported to mle_table.parquet')
 
-# # Combine converted gene lists into a single dictionary
-# genes_of_interest_dict = {
-#     'mco_dev': converted_mco_dev,
-#     'mco_behavior': converted_mco_behavior,
-#     'lof_dev': converted_lof_dev,
-#     'lof_behavior': converted_lof_behavior
-# }
+# Combine converted gene lists into a single dictionary
+genes_of_interest_dict = {
+    'mco_dev': converted_mco_dev,
+    'mco_behavior': converted_mco_behavior,
+    'lof_dev': converted_lof_dev,
+    'lof_behavior': converted_lof_behavior
+}
 
-# # Export the combined genes of interest dictionary as a JSON file
-# with open('/content/drive/MyDrive/genes_of_interest.json', 'w') as f:
-#     json.dump(genes_of_interest_dict, f, indent=4)
-# print('Combined genes of interest dictionary exported to genes_of_interest.json')
+# Export the combined genes of interest dictionary as a JSON file
+with open('/content/drive/MyDrive/genes_of_interest.json', 'w') as f:
+    json.dump(genes_of_interest_dict, f, indent=4)
+print('Combined genes of interest dictionary exported to genes_of_interest.json')
 
 from google.colab import drive
 drive.mount('/content/drive')
@@ -1193,13 +1193,13 @@ def analyze_best_isoforms(gene_isoform_map):
 
     return best_genes_to_use
 
-#analyze_best_isoforms(converted_mco_behavior)
+analyze_best_isoforms(converted_mco_behavior)
 
-#analyze_best_isoforms(converted_mco_behavior)
+analyze_best_isoforms(converted_mco_behavior)
 
-#analyze_best_isoforms(converted_lof_dev)
+analyze_best_isoforms(converted_lof_dev)
 
-#analyze_best_isoforms(converted_lof_behavior)
+analyze_best_isoforms(converted_lof_behavior)
 
 trial = BhuvanFitter(df['w22333_Y17G9B.5.1'], gene_name='w16468_C16A11.6.2', bins=40)
 trial.fit("fourparam")
