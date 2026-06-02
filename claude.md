@@ -18,6 +18,15 @@ Edit the project as `bhuvanfitterpierce.py`. To save a versioned snapshot to Git
 
 This converts the `.py` to `.ipynb`, commits both with a descriptive message, and pushes to `origin/main`.
 
+## Git Hygiene
+
+Commit and push to GitHub regularly during any work session — after each meaningful change, not just at the end. This ensures work is never lost and the history is readable.
+
+- Commit after completing each logical unit of work (a new function, a bug fix, a refactor).
+- Write specific commit messages that describe what changed and why (e.g. "Fix baseline subtraction in ti_fourparam_height_ratio", not "Update code").
+- Never leave a session with uncommitted changes to `bhuvanfitterpierce.py`.
+- When running `/checkpoint`, both the `.py` and `.ipynb` are committed together — do not commit them separately.
+
 ## Generating the Notebook
 
 ```bash
