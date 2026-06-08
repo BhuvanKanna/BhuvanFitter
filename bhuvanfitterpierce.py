@@ -57,10 +57,12 @@ The two tables are independent and can be joined on `gene` if needed.
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit, minimize
-from scipy.stats import norm
+from scipy.stats import norm, gaussian_kde
+from scipy.signal import find_peaks, peak_prominences
 from scipy.special import ndtr          # fast, numerically stable normal CDF
 import pandas as pd
 import warnings
+from collections import namedtuple
 
 """## 2. 4-Parameter Gaussian Model
 
@@ -209,6 +211,175 @@ def _fit_mle_truncated(data, x_max):
     sigma_mle = float(np.exp(result.x[1]))
     nll       = float(result.fun)
     return mu_mle, sigma_mle, nll
+
+"""## 3.5 Peak Detection (KDE)
+
+A single, bin-independent peak detector built on a Gaussian kernel density estimate.
+It powers three things consistently:
+
+1. **Multimodality** — how many modes does the distribution have, and where?
+2. **Rightmost-peak filtering** — the real biological signal is the rightmost mode;
+   `filter_to_rightmost_peak` keeps only the data above the valley (antimode) just
+   left of it. This is the principled, data-driven replacement for the eyeballed
+   `-0.75` cut.
+3. **`has_minus_one_peak`** (§5) — simply "is there a *prominent* peak near −1?".
+
+### Why KDE instead of the histogram?
+
+Running peak detection on raw histogram counts makes the answer depend on the bin
+width — exactly the kind of arbitrary choice we are trying to remove. A KDE smooths
+the sample into a continuous density that does not depend on `BhuvanFitter.bins`, so
+detection is stable across genes. Peak **prominence** (height above the neighbouring
+valley) provides a scale-free significance criterion via `scipy.signal.find_peaks`.
+
+"""
+
+# Lightweight container for peak-detection results.
+PeakResult = namedtuple(
+    "PeakResult",
+    ["peak_x", "peak_height", "prominence", "valley_x", "grid", "density"],
+)
+
+
+def find_density_peaks(data, bw_method="silverman", grid_size=1000,
+                       min_prominence_frac=0.05, pad_frac=0.05):
+    """
+    Detect the modes of a 1-D sample via a Gaussian KDE + find_peaks.
+
+    A kernel density estimate is evaluated on a fine grid, peaks (local maxima) are
+    found, and only peaks whose prominence is at least ``min_prominence_frac`` of the
+    maximum density are kept. Valleys (antimodes) are the density minima between
+    adjacent kept peaks.
+
+    Parameters
+    ----------
+    data : array-like
+        1-D sample of values (e.g. expression across strains for one gene).
+    bw_method : str or float
+        Bandwidth passed to ``scipy.stats.gaussian_kde`` ('silverman', 'scott', a
+        scalar factor, or a callable). Larger = smoother = fewer spurious peaks.
+    grid_size : int
+        Number of grid points the density is evaluated on.
+    min_prominence_frac : float
+        Minimum peak prominence as a fraction of the maximum density. Scale-free, so
+        the same value works across genes regardless of count magnitude.
+    pad_frac : float
+        Fraction of the data range to pad the grid on each side, so peaks near the
+        edges are still resolved.
+
+    Returns
+    -------
+    PeakResult
+        Named tuple with fields:
+            peak_x       np.ndarray  Peak locations, sorted ascending.
+            peak_height  np.ndarray  Density value at each peak.
+            prominence   np.ndarray  Prominence of each peak.
+            valley_x     np.ndarray  Antimode location between each pair of adjacent
+                                     peaks (length == len(peak_x) - 1).
+            grid         np.ndarray  Grid the density was evaluated on.
+            density      np.ndarray  KDE density on the grid.
+    """
+    arr = np.asarray(data, dtype=float)
+    arr = arr[np.isfinite(arr)]
+
+    empty = np.array([])
+
+    # Degenerate: nothing to detect.
+    if arr.size == 0:
+        return PeakResult(empty, empty, empty, empty, empty, empty)
+
+    lo, hi = float(arr.min()), float(arr.max())
+    spread = float(np.std(arr))
+
+    # Degenerate: too few points or no spread -> a single peak at the median.
+    if arr.size < 5 or spread < 1e-8 or hi - lo < 1e-12:
+        med = float(np.median(arr))
+        grid = np.array([med])
+        density = np.array([1.0])
+        return PeakResult(
+            np.array([med]), np.array([1.0]), np.array([0.0]),
+            empty, grid, density,
+        )
+
+    pad = (hi - lo) * pad_frac
+    grid = np.linspace(lo - pad, hi + pad, grid_size)
+
+    try:
+        kde = gaussian_kde(arr, bw_method=bw_method)
+        density = kde(grid)
+    except np.linalg.LinAlgError:
+        # Singular covariance (e.g. near-constant data) -> single peak at the median.
+        med = float(np.median(arr))
+        return PeakResult(
+            np.array([med]), np.array([1.0]), np.array([0.0]),
+            empty, np.array([med]), np.array([1.0]),
+        )
+
+    dmax = float(density.max())
+    min_prom = min_prominence_frac * dmax
+
+    peak_idx, props = find_peaks(density, prominence=min_prom)
+
+    # No interior peak cleared the bar -> treat the global max as the single mode.
+    if peak_idx.size == 0:
+        gi = int(np.argmax(density))
+        return PeakResult(
+            np.array([grid[gi]]), np.array([density[gi]]), np.array([0.0]),
+            empty, grid, density,
+        )
+
+    peak_x      = grid[peak_idx]
+    peak_height = density[peak_idx]
+    prominence  = props["prominences"]
+
+    # Valleys: the deepest density point between each pair of adjacent peaks.
+    valley_x = []
+    for left, right in zip(peak_idx[:-1], peak_idx[1:]):
+        vi = left + int(np.argmin(density[left:right + 1]))
+        valley_x.append(grid[vi])
+    valley_x = np.array(valley_x)
+
+    return PeakResult(peak_x, peak_height, prominence, valley_x, grid, density)
+
+
+def filter_to_rightmost_peak(data, return_cut=False, **detect_kwargs):
+    """
+    Return only the data belonging to the rightmost detected mode.
+
+    Detects peaks with ``find_density_peaks``; if the sample is unimodal the data is
+    returned unchanged. Otherwise the cut is the valley (antimode) immediately left of
+    the rightmost peak, and only values strictly above that cut are kept. This is the
+    principled replacement for the manual ``data > -0.75`` filter.
+
+    Parameters
+    ----------
+    data : array-like
+        1-D sample of values.
+    return_cut : bool
+        If True, also return the cut location used.
+    **detect_kwargs
+        Forwarded to ``find_density_peaks`` (e.g. bw_method, min_prominence_frac).
+
+    Returns
+    -------
+    np.ndarray                      if return_cut is False
+    (np.ndarray, float)             if return_cut is True
+        The filtered data, and (optionally) the cut value. The cut is ``-inf`` when no
+        filtering was applied (unimodal data).
+    """
+    arr = np.asarray(data, dtype=float)
+    arr = arr[np.isfinite(arr)]
+
+    res = find_density_peaks(arr, **detect_kwargs)
+
+    # Unimodal (or degenerate) -> nothing to filter out.
+    if res.peak_x.size <= 1 or res.valley_x.size == 0:
+        cut = -np.inf
+        return (arr, cut) if return_cut else arr
+
+    cut = float(res.valley_x[-1])          # valley left of the rightmost peak
+    kept = arr[arr > cut]
+    return (kept, cut) if return_cut else kept
 
 """## 4. The `BhuvanFitter` Class
 
@@ -523,7 +694,7 @@ class BhuvanFitter:
 
     # ── Visualisation ─────────────────────────────────────────────────────────
 
-    def hist(self, lines=None, show_true_gaussian=False):
+    def hist(self, lines=None, show_true_gaussian=False, show_peaks=False):
         """
         Plot the histogram and optionally overlay fitted curves.
 
@@ -534,6 +705,10 @@ class BhuvanFitter:
         show_true_gaussian : bool
             If True and MLE is active, also draws the untruncated true
             Gaussian as a dashed line.
+        show_peaks : bool
+            If True, overlay the KDE used for peak detection (scaled to histogram
+            counts), mark each detected peak, and draw the rightmost-peak cut used
+            by ``filter_to_rightmost_peak``.
         """
         fig, ax = plt.subplots(figsize=(9, 5))
 
@@ -601,6 +776,27 @@ class BhuvanFitter:
                        linewidth=1.5, alpha=0.6,
                        label=f"μ_MLE = {self.mle_mu:.3g}", zorder=4)
 
+        if show_peaks:
+            res = find_density_peaks(self._data)
+            if res.density.size > 1:
+                bin_width   = np.diff(self.hist_edges).mean()
+                total_count = self.hist_counts.sum()
+                ax.plot(res.grid, res.density * total_count * bin_width,
+                        color="purple", linewidth=1.5, alpha=0.8,
+                        label="KDE (peak detection)", zorder=3)
+
+            for i, px in enumerate(res.peak_x):
+                ax.axvline(px, color="purple", linestyle="-", linewidth=1,
+                           alpha=0.5, zorder=3,
+                           label="detected peak" if i == 0 else None)
+
+            # Rightmost-peak cut: the valley left of the rightmost peak.
+            if res.peak_x.size > 1 and res.valley_x.size > 0:
+                cut = res.valley_x[-1]
+                ax.axvline(cut, color="magenta", linestyle="--", linewidth=1.5,
+                           alpha=0.9, zorder=4,
+                           label=f"rightmost-peak cut = {cut:.3g}")
+
         ax.set_title(self.gene_name, fontsize=14, fontweight="bold")
         ax.set_xlabel("Gene Expression Level", fontsize=12)
         ax.set_ylabel("Frequency (bin count) ", fontsize=12)
@@ -635,25 +831,36 @@ strains where the gene was not expressed (below detection threshold). Genes with
 large spike at -1 have a mixed distribution and should be treated with caution or
 excluded before computing truncation indices.
 
-`has_minus_one_peak` flags any gene where ≥ `min_fraction` of observations fall
-at or below `−1 + tolerance`.
+`has_minus_one_peak` is a thin wrapper over the general detector (§3.5): it flags any
+gene for which `find_density_peaks` reports a **prominent peak** within `tolerance` of
+−1. Using the same peak engine here keeps the definition of "a spike at −1" consistent
+with multimodality detection and `filter_to_rightmost_peak`.
 
 """
 
-def has_minus_one_peak(data_vector, tolerance=0.25, min_fraction=0.20):
+def has_minus_one_peak(data_vector, near=-1.0, tolerance=0.25,
+                       min_prominence_frac=0.05):
     """
-    Returns True if the data array contains a significant spike at -1.
+    Returns True if the data has a prominent peak near -1.
+
+    Thin wrapper over ``find_density_peaks`` (§3.5): detects all modes via KDE and
+    returns True iff one of the prominent peaks sits within ``tolerance`` of ``near``.
+    This replaces the older mass-fraction rule; significance is now judged by peak
+    prominence (see ``min_prominence_frac``), consistent with the rest of the toolkit.
 
     Parameters
     ----------
-    data_vector  : array-like   1D array of gene expression values.
-    tolerance    : float        Half-width of the window around -1 (default 0.25).
-    min_fraction : float        Minimum proportion of values in that window to
-                                trigger the flag (default 0.20 = 20%).
+    data_vector         : array-like   1D array of gene expression values.
+    near                : float        Sentinel location to test for (default -1.0).
+    tolerance           : float        Half-width of the window around ``near`` within
+                                       which a detected peak counts (default 0.25).
+    min_prominence_frac : float        Minimum peak prominence as a fraction of the
+                                       max density for a peak to be considered
+                                       significant (default 0.05).
 
     Returns
     -------
-    bool   True if a significant -1 spike is detected.
+    bool   True if a prominent peak is detected within ``tolerance`` of ``near``.
     """
     clean_data = np.asarray(data_vector, dtype=float)
     clean_data = clean_data[np.isfinite(clean_data)]
@@ -661,11 +868,11 @@ def has_minus_one_peak(data_vector, tolerance=0.25, min_fraction=0.20):
     if clean_data.size == 0:
         return False
 
-    upper_bound         = -1.0 + tolerance
-    points_at_minus_one = np.sum(clean_data <= upper_bound)
-    fraction            = points_at_minus_one / clean_data.size
+    res = find_density_peaks(clean_data, min_prominence_frac=min_prominence_frac)
+    if res.peak_x.size == 0:
+        return False
 
-    return fraction >= min_fraction
+    return bool(np.any(np.abs(res.peak_x - near) <= tolerance))
 
 """## 6. Batch Analysis Functions
 
